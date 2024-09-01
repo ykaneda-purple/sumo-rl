@@ -50,6 +50,7 @@ class TrafficSignal:
         ts_id: str,
         delta_time: int,
         yellow_time: int,
+        all_red_time: int,
         min_green: int,
         max_green: int,
         begin_time: int,
@@ -73,10 +74,12 @@ class TrafficSignal:
         self.env = env
         self.delta_time = delta_time
         self.yellow_time = yellow_time
+        self.all_red_time = all_red_time
         self.min_green = min_green
         self.max_green = max_green
         self.green_phase = 0
         self.is_yellow = False
+        self.is_all_red = False
         self.time_since_last_phase_change = 0
         self.next_action_time = begin_time
         self.last_measure = 0.0
@@ -131,6 +134,9 @@ class TrafficSignal:
                         yellow_state += p1.state[s]
                 self.yellow_dict[(i, j)] = len(self.all_phases)
                 self.all_phases.append(self.sumo.trafficlight.Phase(self.yellow_time, yellow_state))
+        
+        self.all_red_state = "r"*len(self.green_phases[0].state)
+        self.all_phases.append(self.sumo.trafficlight.Phase(self.all_red_time, self.all_red_state))
 
         programs = self.sumo.trafficlight.getAllProgramLogics(self.id)
         logic = programs[0]
@@ -152,8 +158,16 @@ class TrafficSignal:
         self.time_since_last_phase_change += 1
         if self.is_yellow and self.time_since_last_phase_change == self.yellow_time:
             # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
+            if self.all_red_time != 0:
+                self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_red_state)
+                self.is_yellow = False
+                self.is_all_red = True
+            else:
+                self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
+                self.is_yellow = False
+        elif self.is_all_red and self.time_since_last_phase_change == self.yellow_time + self.all_red_time:
             self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
-            self.is_yellow = False
+            self.is_all_red = False
 
     def set_next_phase(self, new_phase: int):
         """Sets what will be the next green phase and sets yellow phase if the next phase is different than the current.
@@ -162,7 +176,7 @@ class TrafficSignal:
             new_phase (int): Number between [0 ... num_green_phases]
         """
         new_phase = int(new_phase)
-        if self.green_phase == new_phase or self.time_since_last_phase_change < self.yellow_time + self.min_green:
+        if self.green_phase == new_phase:
             # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
             self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
             self.next_action_time = self.env.sim_step + self.delta_time
@@ -172,7 +186,7 @@ class TrafficSignal:
                 self.id, self.all_phases[self.yellow_dict[(self.green_phase, new_phase)]].state
             )
             self.green_phase = new_phase
-            self.next_action_time = self.env.sim_step + self.delta_time
+            self.next_action_time = self.env.sim_step + self.yellow_time + self.all_red_time + self.min_green
             self.is_yellow = True
             self.time_since_last_phase_change = 0
 
@@ -202,7 +216,7 @@ class TrafficSignal:
 
     def _observation_fn_default(self):
         phase_id = [1 if self.green_phase == i else 0 for i in range(self.num_green_phases)]  # one-hot encoding
-        min_green = [0 if self.time_since_last_phase_change < self.min_green + self.yellow_time else 1]
+        min_green = [0 if self.time_since_last_phase_change < self.min_green + self.yellow_time + self.all_red_time else 1]
         density = self.get_lanes_density()
         queue = self.get_lanes_queue()
         observation = np.array(phase_id + min_green + density + queue, dtype=np.float32)

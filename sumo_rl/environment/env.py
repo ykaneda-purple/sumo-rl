@@ -93,6 +93,7 @@ class SumoEnvironment(gym.Env):
         time_to_teleport: int = -1,
         delta_time: int = 5,
         yellow_time: int = 2,
+        all_red_time: int = 0,
         min_green: int = 5,
         max_green: int = 50,
         num_episodes: int = 1,
@@ -124,8 +125,6 @@ class SumoEnvironment(gym.Env):
         else:
             self._sumo_binary = sumolib.checkBinary("sumo")
 
-        assert delta_time > yellow_time, "Time between actions must be at least greater than yellow time."
-
         self.begin_time = begin_time
         self.num_seconds = num_seconds
         self.sim_max_time = begin_time + num_seconds
@@ -136,6 +135,7 @@ class SumoEnvironment(gym.Env):
         self.min_green = min_green
         self.max_green = max_green
         self.yellow_time = yellow_time
+        self.all_red_time = all_red_time
         self.num_episodes = num_episodes
         self.single_agent = single_agent
         self.reward_fn = reward_fn
@@ -168,6 +168,7 @@ class SumoEnvironment(gym.Env):
                     ts,
                     self.delta_time,
                     self.yellow_time,
+                    self.all_red_time,
                     self.min_green,
                     self.max_green,
                     self.begin_time,
@@ -183,6 +184,7 @@ class SumoEnvironment(gym.Env):
                     ts,
                     self.delta_time,
                     self.yellow_time,
+                    self.all_red_time,
                     self.min_green,
                     self.max_green,
                     self.begin_time,
@@ -278,6 +280,7 @@ class SumoEnvironment(gym.Env):
                         ts,
                         self.delta_time,
                         self.yellow_time,
+                        self.all_red_time,
                         self.min_green,
                         self.max_green,
                         self.begin_time,
@@ -293,6 +296,7 @@ class SumoEnvironment(gym.Env):
                         ts,
                         self.delta_time,
                         self.yellow_time,
+                        self.all_red_time,
                         self.min_green,
                         self.max_green,
                         self.begin_time,
@@ -346,6 +350,7 @@ class SumoEnvironment(gym.Env):
             return observations, rewards, dones, info
 
     def _run_steps(self):
+        ### 次の現示を決めるstepまでsumoを進める
         time_to_act = False
         while not time_to_act:
             self._sumo_step()
