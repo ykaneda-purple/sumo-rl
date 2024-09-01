@@ -271,6 +271,19 @@ class TrafficSignal:
         ]
         return [min(1, density) for density in lanes_density]
 
+    def departed_vehicle_number(self, lane):
+        vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
+        pending_vehicles = self.env.get_pending_fn(self, lane)
+        return len(vehicles) + len(pending_vehicles)
+    
+    def get_lanes_density_with_pending_vehicles(self) -> List[float]:
+        lanes_density = [
+            self.departed_vehicle_number(lane)
+            / (self.lanes_length[lane] / (self.MIN_GAP + self.sumo.lane.getLastStepLength(lane)))
+            for lane in self.lanes
+        ]
+        return lanes_density
+
     def get_lanes_queue(self) -> List[float]:
         """Returns the queue [0,1] of the vehicles in the incoming lanes of the intersection.
 
@@ -286,6 +299,30 @@ class TrafficSignal:
     def get_total_queued(self) -> int:
         """Returns the total number of vehicles halting in the intersection."""
         return sum(self.sumo.lane.getLastStepHaltingNumber(lane) for lane in self.lanes)
+    
+    def count_queue_length(self, lane):
+        vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
+        pending_vehicles = self.env.get_pending_fn(self, lane)
+        if len(vehicles) == 0:
+            return 0
+        elif self.sumo.vehicle.getSpeed(vehicles[-1]) < 0.1:
+            return len(vehicles) + len(pending_vehicles)
+        else:
+            queue = 0
+            for vehicle in vehicles:
+                if self.sumo.vehicle.getSpeed(vehicle) < 0.1:
+                    queue += 1
+                else:
+                    break
+            return queue
+        
+    def get_lanes_queue_with_pending_vehicles(self) -> List[float]:
+        lanes_queue = [
+            self.count_queue_length(lane)
+            / (self.lanes_length[lane] / (self.MIN_GAP + self.sumo.lane.getLastStepLength(lane)))
+            for lane in self.lanes
+        ]
+        return lanes_queue
 
     def _get_veh_list(self):
         veh_list = []

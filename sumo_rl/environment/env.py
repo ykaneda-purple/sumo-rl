@@ -82,6 +82,7 @@ class SumoEnvironment(gym.Env):
         self,
         net_file: str,
         route_file: str,
+        get_pending_fn: Callable,
         out_csv_name: Optional[str] = None,
         use_gui: bool = False,
         virtual_display: Tuple[int, int] = (3200, 1800),
@@ -94,6 +95,7 @@ class SumoEnvironment(gym.Env):
         yellow_time: int = 2,
         min_green: int = 5,
         max_green: int = 50,
+        num_episodes: int = 1,
         single_agent: bool = False,
         reward_fn: Union[str, Callable, dict] = "diff-waiting-time",
         observation_class: ObservationFunction = DefaultObservationFunction,
@@ -104,6 +106,8 @@ class SumoEnvironment(gym.Env):
         sumo_warnings: bool = True,
         additional_sumo_cmd: Optional[str] = None,
         render_mode: Optional[str] = None,
+        dump_xml: Optional[str] = None,
+        tripinfo_xml: Optional[str] = None,
     ) -> None:
         """Initialize the environment."""
         assert render_mode is None or render_mode in self.metadata["render_modes"], "Invalid render mode."
@@ -113,6 +117,7 @@ class SumoEnvironment(gym.Env):
 
         self._net = net_file
         self._route = route_file
+        self.get_pending_fn = get_pending_fn
         self.use_gui = use_gui
         if self.use_gui or self.render_mode is not None:
             self._sumo_binary = sumolib.checkBinary("sumo-gui")
@@ -122,6 +127,7 @@ class SumoEnvironment(gym.Env):
         assert delta_time > yellow_time, "Time between actions must be at least greater than yellow time."
 
         self.begin_time = begin_time
+        self.num_seconds = num_seconds
         self.sim_max_time = begin_time + num_seconds
         self.delta_time = delta_time  # seconds on sumo at each step
         self.max_depart_delay = max_depart_delay  # Max wait time to insert a vehicle
@@ -130,6 +136,7 @@ class SumoEnvironment(gym.Env):
         self.min_green = min_green
         self.max_green = max_green
         self.yellow_time = yellow_time
+        self.num_episodes = num_episodes
         self.single_agent = single_agent
         self.reward_fn = reward_fn
         self.sumo_seed = sumo_seed
@@ -141,6 +148,8 @@ class SumoEnvironment(gym.Env):
         self.label = str(SumoEnvironment.CONNECTION_LABEL)
         SumoEnvironment.CONNECTION_LABEL += 1
         self.sumo = None
+        self.dump_xml = dump_xml
+        self.tripinfo_xml = tripinfo_xml
 
         if LIBSUMO:
             traci.start([sumolib.checkBinary("sumo"), "-n", self._net])  # Start only to retrieve traffic light information
@@ -186,9 +195,11 @@ class SumoEnvironment(gym.Env):
         conn.close()
 
         self.vehicles = dict()
+        self.lane_vehicles = {ts: {lane: {} for lane in self.traffic_signals[ts].lanes} for ts in self.ts_ids}
         self.reward_range = (-float("inf"), float("inf"))
         self.episode = 0
         self.metrics = []
+        self.my_metrics = []
         self.out_csv_name = out_csv_name
         self.observations = {ts: None for ts in self.ts_ids}
         self.rewards = {ts: None for ts in self.ts_ids}
@@ -227,6 +238,9 @@ class SumoEnvironment(gym.Env):
                 self.disp = SmartDisplay(size=self.virtual_display)
                 self.disp.start()
                 print("Virtual display started.")
+        ### tripinfoを出力できるように変更
+        if self.tripinfo_xml:
+            sumo_cmd.extend(["--tripinfo-output", f"{self.tripinfo_xml}_ep{self.episode}.xml"])
 
         if LIBSUMO:
             traci.start(sumo_cmd)
@@ -244,48 +258,55 @@ class SumoEnvironment(gym.Env):
         """Reset the environment."""
         super().reset(seed=seed, **kwargs)
 
-        if self.episode != 0:
-            self.close()
-            self.save_csv(self.out_csv_name, self.episode)
-        self.episode += 1
-        self.metrics = []
+        if self.episode % self.num_episodes == 0:
+            if self.episode != 0:
+                self.close()
+                self.save_csv(self.out_csv_name, self.episode)
+            self.episode += 1
+            self.my_metrics = []
+            self.lane_vehicles = {ts: {lane: {} for lane in self.traffic_signals[ts].lanes} for ts in self.ts_ids}
+            self.sim_max_time = self.begin_time + self.num_seconds
 
-        if seed is not None:
-            self.sumo_seed = seed
-        self._start_simulation()
+            if seed is not None:
+                self.sumo_seed = seed
+            self._start_simulation()
 
-        if isinstance(self.reward_fn, dict):
-            self.traffic_signals = {
-                ts: TrafficSignal(
-                    self,
-                    ts,
-                    self.delta_time,
-                    self.yellow_time,
-                    self.min_green,
-                    self.max_green,
-                    self.begin_time,
-                    self.reward_fn[ts],
-                    self.sumo,
-                )
-                for ts in self.reward_fn.keys()
-            }
+            if isinstance(self.reward_fn, dict):
+                self.traffic_signals = {
+                    ts: TrafficSignal(
+                        self,
+                        ts,
+                        self.delta_time,
+                        self.yellow_time,
+                        self.min_green,
+                        self.max_green,
+                        self.begin_time,
+                        self.reward_fn[ts],
+                        self.sumo,
+                    )
+                    for ts in self.reward_fn.keys()
+                }
+            else:
+                self.traffic_signals = {
+                    ts: TrafficSignal(
+                        self,
+                        ts,
+                        self.delta_time,
+                        self.yellow_time,
+                        self.min_green,
+                        self.max_green,
+                        self.begin_time,
+                        self.reward_fn,
+                        self.sumo,
+                    )
+                    for ts in self.ts_ids
+                }
+
+            self.vehicles = dict()
         else:
-            self.traffic_signals = {
-                ts: TrafficSignal(
-                    self,
-                    ts,
-                    self.delta_time,
-                    self.yellow_time,
-                    self.min_green,
-                    self.max_green,
-                    self.begin_time,
-                    self.reward_fn,
-                    self.sumo,
-                )
-                for ts in self.ts_ids
-            }
-
-        self.vehicles = dict()
+            self.episode += 1
+            self.sim_max_time += self.num_seconds
+            self.save_csv(self.out_csv_name, self.episode)
 
         if self.single_agent:
             return self._compute_observations()[self.ts_ids[0]], self._compute_info()
@@ -362,6 +383,65 @@ class SumoEnvironment(gym.Env):
         self.metrics.append(info.copy())
         return info
 
+    def _my_compute_info(self):
+        info = {"step": self.sim_step}
+        for ts in self.ts_ids:
+            info.update({f"ts_{ts}_phase": self.sumo.trafficlight.getRedYellowGreenState(ts)})
+            diff_waiting_time = 0
+            for lane in self.traffic_signals[ts].lanes:
+                throughput = 0
+                previous_vehicles = list(self.lane_vehicles[ts][lane].keys())
+                now_vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
+                for veh in previous_vehicles:
+                    acc_waiting_time = self.sumo.vehicle.getAccumulatedWaitingTime(veh)
+                    diff = acc_waiting_time - self.lane_vehicles[ts][lane][veh]
+                    diff_waiting_time += diff
+                    if veh not in now_vehicles:
+                        throughput += 1
+                        self.lane_vehicles[ts][lane].pop(veh)
+                    else:
+                        self.lane_vehicles[ts][lane][veh] = acc_waiting_time
+                # now_vehiclesの後半をself.lane_vehicles[ts][lane]に追加する
+                if len(now_vehicles) == 0:
+                    # 今のステップのレーンに車がいない→追加せずにスキップ
+                    new_index = -1
+                elif len(previous_vehicles) == 0:
+                    # 前回のステップで車がいなかった
+                    new_index = 0
+                elif previous_vehicles[-1] not in now_vehicles:
+                    # 前回のステップの車がすべてはけた
+                    new_index = 0
+                elif now_vehicles[-1] != previous_vehicles[-1]:
+                    # 後ろに車が来ていない→追加せずにスキップ
+                    new_index = -1
+                else:
+                    new_index = now_vehicles.index(previous_vehicles[-1]) + 1
+                if new_index != -1:
+                    for i in range(new_index, len(now_vehicles)):
+                        # 新しく見えた車列の累積待ち時間とdepart delayを足す
+                        acc_waiting_time = self.sumo.vehicle.getAccumulatedWaitingTime(now_vehicles[i])
+                        diff_waiting_time += acc_waiting_time
+                        self.lane_vehicles[ts][lane][now_vehicles[i]] = acc_waiting_time
+                    # ここで挿入されたなかった台数分だけdepart_delayが増える
+                    diff_waiting_time += len(self.get_pending_fn(self.traffic_signals[ts], lane))
+                info.update({f"lane_{lane}_throughput": throughput})
+                info.update({f"lane_{lane}_vehicles_number": self.traffic_signals[ts].departed_vehicle_number(lane)})
+                info.update({f"lane_{lane}_queue_length": self.traffic_signals[ts].count_queue_length(lane)})
+                divided = 0
+                for vehicle in self.lane_vehicles[ts][lane]:
+                    speed = self.sumo.vehicle.getSpeed(vehicle)
+                    if speed == 0:
+                        divided = 0
+                        break
+                    else:
+                        divided += 1/speed
+                if divided == 0:
+                    info.update({f"lane_{lane}_space_mean_speed": 0})
+                else:
+                    info.update({f"lane_{lane}_space_mean_speed": 1 / divided})
+            info.update({f"ts_{ts}_diff_waiting_time": diff_waiting_time})
+        self.my_metrics.append(info)
+
     def _compute_observations(self):
         self.observations.update(
             {
@@ -412,6 +492,7 @@ class SumoEnvironment(gym.Env):
 
     def _sumo_step(self):
         self.sumo.simulationStep()
+        self._my_compute_info()
 
     def _get_system_info(self):
         vehicles = self.sumo.vehicle.getIDList()
@@ -482,9 +563,11 @@ class SumoEnvironment(gym.Env):
             episode (int): Episode number to be appended to the output file name.
         """
         if out_csv_name is not None:
-            df = pd.DataFrame(self.metrics)
+            df_preinfo = pd.DataFrame(self.metrics)
+            df_myinfo = pd.DataFrame(self.my_metrics)
             Path(Path(out_csv_name).parent).mkdir(parents=True, exist_ok=True)
-            df.to_csv(out_csv_name + f"_conn{self.label}_ep{episode}" + ".csv", index=False)
+            df_preinfo.to_csv(out_csv_name + f"_conn{self.label}_ep{episode}" + ".csv", index=False)
+            df_myinfo.to_csv(out_csv_name + f"_allstep_conn{self.label}_ep{episode}" + ".csv", index=False)
 
     # Below functions are for discrete state space
 

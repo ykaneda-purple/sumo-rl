@@ -36,14 +36,16 @@ class DefaultObservationFunction(ObservationFunction):
         """Return the default observation."""
         phase_id = [1 if self.ts.green_phase == i else 0 for i in range(self.ts.num_green_phases)]  # one-hot encoding
         min_green = [0 if self.ts.time_since_last_phase_change < self.ts.min_green + self.ts.yellow_time else 1]
-        density = self.ts.get_lanes_density()
-        queue = self.ts.get_lanes_queue()
+        density = self.ts.get_lanes_density_with_pending_vehicles()
+        queue = self.ts.get_lanes_queue_with_pending_vehicles()
         observation = np.array(phase_id + min_green + density + queue, dtype=np.float32)
         return observation
 
     def observation_space(self) -> spaces.Box:
         """Return the observation space."""
+        high_bound = np.ones(self.ts.num_green_phases + 1 + 2 * len(self.ts.lanes), dtype=np.float32)
+        high_bound[-2 * len(self.ts.lanes):] *= 10
         return spaces.Box(
             low=np.zeros(self.ts.num_green_phases + 1 + 2 * len(self.ts.lanes), dtype=np.float32),
-            high=np.ones(self.ts.num_green_phases + 1 + 2 * len(self.ts.lanes), dtype=np.float32),
+            high=high_bound,
         )
