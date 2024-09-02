@@ -243,6 +243,8 @@ class SumoEnvironment(gym.Env):
         ### tripinfoを出力できるように変更
         if self.tripinfo_xml:
             sumo_cmd.extend(["--tripinfo-output", f"{self.tripinfo_xml}_ep{self.episode}.xml"])
+        if self.dump_xml:
+            sumo_cmd.extend(["--netstate-dump", f"{self.dump_xml}_dump_ep{self.episode}.xml"])
 
         if LIBSUMO:
             traci.start(sumo_cmd)
