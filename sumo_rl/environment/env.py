@@ -2,7 +2,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union, List
 
 
 if "SUMO_HOME" in os.environ:
@@ -110,6 +110,7 @@ class SumoEnvironment(gym.Env):
         render_mode: Optional[str] = None,
         dump_xml: Optional[str] = None,
         tripinfo_xml: Optional[str] = None,
+        optional_command: List[str] = [],
     ) -> None:
         """Initialize the environment."""
         assert render_mode is None or render_mode in self.metadata["render_modes"], "Invalid render mode."
@@ -152,6 +153,7 @@ class SumoEnvironment(gym.Env):
         self.sumo = None
         self.dump_xml = dump_xml
         self.tripinfo_xml = tripinfo_xml
+        self.optional_command = optional_command
 
         if LIBSUMO:
             traci.start([sumolib.checkBinary("sumo"), "-n", self._net])  # Start only to retrieve traffic light information
@@ -249,6 +251,7 @@ class SumoEnvironment(gym.Env):
             sumo_cmd.extend(["--tripinfo-output", f"{self.tripinfo_xml}_ep{self.episode}.xml"])
         if self.dump_xml:
             sumo_cmd.extend(["--netstate-dump", f"{self.dump_xml}_dump_ep{self.episode}.xml"])
+        sumo_cmd += self.optional_command
 
         if LIBSUMO:
             traci.start(sumo_cmd)
