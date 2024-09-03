@@ -99,6 +99,7 @@ class SumoEnvironment(gym.Env):
         num_episodes: int = 1,
         single_agent: bool = False,
         reward_fn: Union[str, Callable, dict] = "diff-waiting-time",
+        equal_interval: bool = True,
         observation_class: ObservationFunction = DefaultObservationFunction,
         add_system_info: bool = True,
         add_per_agent_info: bool = True,
@@ -139,6 +140,7 @@ class SumoEnvironment(gym.Env):
         self.num_episodes = num_episodes
         self.single_agent = single_agent
         self.reward_fn = reward_fn
+        self.equal_interval = equal_interval
         self.sumo_seed = sumo_seed
         self.fixed_ts = fixed_ts
         self.sumo_warnings = sumo_warnings
@@ -174,6 +176,7 @@ class SumoEnvironment(gym.Env):
                     self.begin_time,
                     self.reward_fn[ts],
                     conn,
+                    self.equal_interval,
                 )
                 for ts in self.reward_fn.keys()
             }
@@ -190,6 +193,7 @@ class SumoEnvironment(gym.Env):
                     self.begin_time,
                     self.reward_fn,
                     conn,
+                    self.equal_interval,
                 )
                 for ts in self.ts_ids
             }
@@ -288,6 +292,7 @@ class SumoEnvironment(gym.Env):
                         self.begin_time,
                         self.reward_fn[ts],
                         self.sumo,
+                        self.equal_interval,
                     )
                     for ts in self.reward_fn.keys()
                 }
@@ -304,6 +309,7 @@ class SumoEnvironment(gym.Env):
                         self.begin_time,
                         self.reward_fn,
                         self.sumo,
+                        self.equal_interval,
                     )
                     for ts in self.ts_ids
                 }

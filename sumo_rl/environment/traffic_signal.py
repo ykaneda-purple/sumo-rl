@@ -56,6 +56,7 @@ class TrafficSignal:
         begin_time: int,
         reward_fn: Union[str, Callable],
         sumo,
+        equal_interval: bool = True,
     ):
         """Initializes a TrafficSignal object.
 
@@ -86,6 +87,7 @@ class TrafficSignal:
         self.last_reward = None
         self.reward_fn = reward_fn
         self.sumo = sumo
+        self.equal_interval = equal_interval
 
         if type(self.reward_fn) is str:
             if self.reward_fn in TrafficSignal.reward_fns.keys():
@@ -176,9 +178,8 @@ class TrafficSignal:
             new_phase (int): Number between [0 ... num_green_phases]
         """
         new_phase = int(new_phase)
-        if self.green_phase == new_phase:
+        if self.green_phase == new_phase or self.time_since_last_phase_change < self.yellow_time + self.all_red_time + self.min_green:
             # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
-            self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
             self.next_action_time = self.env.sim_step + self.delta_time
         else:
             # self.sumo.trafficlight.setPhase(self.id, self.yellow_dict[(self.green_phase, new_phase)])  # turns yellow
@@ -186,7 +187,10 @@ class TrafficSignal:
                 self.id, self.all_phases[self.yellow_dict[(self.green_phase, new_phase)]].state
             )
             self.green_phase = new_phase
-            self.next_action_time = self.env.sim_step + self.yellow_time + self.all_red_time + self.min_green
+            if self.equal_interval:
+                self.next_action_time = self.env.sim_step + self.delta_time
+            else:
+                self.next_action_time = self.env.sim_step + self.yellow_time + self.all_red_time + self.min_green
             self.is_yellow = True
             self.time_since_last_phase_change = 0
 
