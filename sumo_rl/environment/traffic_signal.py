@@ -291,7 +291,7 @@ class TrafficSignal:
 
     def departed_vehicle_number(self, lane):
         vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
-        pending_vehicles = self.env.get_pending_fn(self, lane)
+        pending_vehicles = self.env.pending_vehicles[self.id][lane]
         return len(vehicles) + len(pending_vehicles)
     
     def get_lanes_density_with_pending_vehicles(self) -> List[float]:
@@ -320,7 +320,7 @@ class TrafficSignal:
     
     def count_queue_length(self, lane):
         vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
-        pending_vehicles = self.env.get_pending_fn(self, lane)
+        pending_vehicles = self.env.pending_vehicles[self.id][lane]
         if len(vehicles) == 0:
             return 0
         elif self.sumo.vehicle.getSpeed(vehicles[-1]) < 0.1:
