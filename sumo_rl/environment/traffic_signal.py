@@ -301,6 +301,14 @@ class TrafficSignal:
             for lane in self.lanes
         ]
         return lanes_density
+    
+    def get_halting_number(self, lane):
+        vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)
+        pending_vehicles = self.env.pending_vehicles[self.id][lane]
+        if self.sumo.vehicle.getSpeed(vehicles[0]) < 0.1: # 最後尾の車が静止状態の場合
+            return self.sumo.lane.getLastStepHaltingNumber(lane) + len(pending_vehicles)
+        else:
+            return self.sumo.lane.getLastStepHaltingNumber(lane)
 
     def get_lanes_queue(self) -> List[float]:
         """Returns the queue [0,1] of the vehicles in the incoming lanes of the intersection.
@@ -308,7 +316,8 @@ class TrafficSignal:
         Obs: The queue is computed as the number of vehicles halting divided by the number of vehicles that could fit in the lane.
         """
         lanes_queue = [
-            self.sumo.lane.getLastStepHaltingNumber(lane)
+            # self.sumo.lane.getLastStepHaltingNumber(lane)
+            self.get_halting_number(lane)
             / (self.lanes_length[lane] / (self.MIN_GAP + self.sumo.lane.getLastStepLength(lane)))
             for lane in self.lanes
         ]
@@ -323,8 +332,8 @@ class TrafficSignal:
         pending_vehicles = self.env.pending_vehicles[self.id][lane]
         if len(vehicles) == 0:
             return 0
-        elif self.sumo.vehicle.getSpeed(vehicles[-1]) < 0.1:
-            return len(vehicles) + len(pending_vehicles)
+        elif self.sumo.vehicle.getSpeed(vehicles[0]) >= 0.1: # 先頭の車が静止状態でないとき
+            return 0
         else:
             queue = 0
             for vehicle in vehicles:
@@ -332,6 +341,8 @@ class TrafficSignal:
                     queue += 1
                 else:
                     break
+            if queue == len(vehicles):
+                queue += len(pending_vehicles)
             return queue
         
     def get_lanes_queue_with_pending_vehicles(self) -> List[float]:
