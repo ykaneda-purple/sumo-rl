@@ -305,7 +305,9 @@ class TrafficSignal:
     def get_halting_number(self, lane):
         vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)
         pending_vehicles = self.env.pending_vehicles[self.id][lane]
-        if self.sumo.vehicle.getSpeed(vehicles[0]) < 0.1: # 最後尾の車が静止状態の場合
+        if len(vehicles) == 0:
+            return 0
+        elif self.sumo.vehicle.getSpeed(vehicles[0]) < 0.1: # 最後尾の車が静止状態の場合
             return self.sumo.lane.getLastStepHaltingNumber(lane) + len(pending_vehicles)
         else:
             return self.sumo.lane.getLastStepHaltingNumber(lane)
