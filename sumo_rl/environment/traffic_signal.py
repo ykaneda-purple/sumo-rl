@@ -111,11 +111,16 @@ class TrafficSignal:
 
     def _build_phases(self):
         phases = self.sumo.trafficlight.getAllProgramLogics(self.id)[0].phases
+        self.green_phases = []
+
         if self.env.fixed_ts:
-            self.num_green_phases = len(phases) // 2  # Number of green phases == number of phases (green+yellow) divided by 2
+            for phase in phases:
+                state = phase.state
+                if "y" not in state and (state.count("r") + state.count("s") != len(state)):
+                    self.green_phases.append(state)
+            self.num_green_phases = len(self.green_phases)
             return
 
-        self.green_phases = []
         self.yellow_dict = {}
         for phase in phases:
             state = phase.state
@@ -170,6 +175,11 @@ class TrafficSignal:
         elif self.is_all_red and self.time_since_last_phase_change == self.yellow_time + self.all_red_time:
             self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
             self.is_all_red = False
+
+    def observe_now_action(self):
+        now_state = self.sumo.trafficlight.getRedYellowGreenState(self.id)
+        if "y" not in now_state and (now_state.count("r") + now_state.count("s") != len(now_state)):
+            self.green_phase = self.green_phases.index(now_state)
 
     def set_next_phase(self, new_phase: int):
         """Sets what will be the next green phase and sets yellow phase if the next phase is different than the current.

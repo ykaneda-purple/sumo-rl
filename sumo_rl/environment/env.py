@@ -345,6 +345,8 @@ class SumoEnvironment(gym.Env):
         if self.fixed_ts or action is None or action == {}:
             for _ in range(self.delta_time):
                 self._sumo_step()
+                for ts in self.ts_ids:
+                    self.traffic_signals[ts].observe_now_action()
         else:
             self._apply_actions(action)
             self._run_steps()
