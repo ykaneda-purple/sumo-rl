@@ -180,6 +180,13 @@ class TrafficSignal:
         now_state = self.sumo.trafficlight.getRedYellowGreenState(self.id)
         if "y" not in now_state and (now_state.count("r") + now_state.count("s") != len(now_state)):
             self.green_phase = self.green_phases.index(now_state)
+            self.is_yellow = False
+            self.time_since_last_phase_change += 1
+        elif not self.is_yellow and now_state != self.green_phases[self.green_phase]:
+            self.time_since_last_phase_change = 1
+            self.is_yellow = True
+        else:
+            self.time_since_last_phase_change += 1
 
     def set_next_phase(self, new_phase: int):
         """Sets what will be the next green phase and sets yellow phase if the next phase is different than the current.
