@@ -163,30 +163,33 @@ class TrafficSignal:
         If the traffic signal should act, it will set the next green phase and update the next action time.
         """
         self.time_since_last_phase_change += 1
-        if self.is_yellow and self.time_since_last_phase_change == self.yellow_time:
-            # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
-            if self.all_red_time != 0:
-                self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_red_state)
-                self.is_yellow = False
-                self.is_all_red = True
-            else:
+        if not self.env.fixed_ts:
+            if self.is_yellow and self.time_since_last_phase_change == self.yellow_time:
+                # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
+                if self.all_red_time != 0:
+                    self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_red_state)
+                    self.is_yellow = False
+                    self.is_all_red = True
+                else:
+                    self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
+                    self.is_yellow = False
+            elif self.is_all_red and self.time_since_last_phase_change == self.yellow_time + self.all_red_time:
                 self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
-                self.is_yellow = False
-        elif self.is_all_red and self.time_since_last_phase_change == self.yellow_time + self.all_red_time:
-            self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
-            self.is_all_red = False
-
-    def observe_now_action(self):
-        now_state = self.sumo.trafficlight.getRedYellowGreenState(self.id)
-        if "y" not in now_state and (now_state.count("r") + now_state.count("s") != len(now_state)):
-            self.green_phase = self.green_phases.index(now_state)
-            self.is_yellow = False
-            self.time_since_last_phase_change += 1
-        elif not self.is_yellow and now_state != self.green_phases[self.green_phase]:
-            self.time_since_last_phase_change = 1
-            self.is_yellow = True
+                self.is_all_red = False
         else:
-            self.time_since_last_phase_change += 1
+            now_state = self.sumo.trafficlight.getRedYellowGreenState(self.id)
+            if "y" not in now_state and (now_state.count("r") + now_state.count("s") != len(now_state)):
+                # 青信号のとき
+                self.green_phase = self.green_phases.index(now_state)
+                self.is_yellow = False
+            elif not self.is_yellow and now_state != self.green_phases[self.green_phase]:
+                # 黄信号に変わったとき
+                self.green_phase = (self.green_phase + 1) % self.num_green_phases # green_phaseは次のものに移行
+                self.time_since_last_phase_change = 1
+                self.is_yellow = True
+            else:
+                # 黄信号のまま続くときは何も変わらない
+                pass
 
     def set_next_phase(self, new_phase: int):
         """Sets what will be the next green phase and sets yellow phase if the next phase is different than the current.

@@ -212,6 +212,7 @@ class SumoEnvironment(gym.Env):
         self.out_csv_name = out_csv_name
         self.observations = {ts: None for ts in self.ts_ids}
         self.rewards = {ts: None for ts in self.ts_ids}
+        self.time_to_next_step = self.delta_time
 
     def _start_simulation(self):
         sumo_cmd = [
@@ -341,15 +342,13 @@ class SumoEnvironment(gym.Env):
             action (Union[dict, int]): action(s) to be applied to the environment.
             If single_agent is True, action is an int, otherwise it expects a dict with keys corresponding to traffic signal ids.
         """
-        # No action, follow fixed TL defined in self.phases
-        if self.fixed_ts or action is None or action == {}:
-            for _ in range(self.delta_time):
-                self._sumo_step()
-                for ts in self.ts_ids:
-                    self.traffic_signals[ts].observe_now_action()
-        else:
+        if not self.fixed_ts and action is not None and action != {}:
             self._apply_actions(action)
             self._run_steps()
+        elif self.equal_interval:
+            self._run_steps()
+        else:
+            self._inequal_run_steps()
 
         observations = self._compute_observations()
         rewards = self._compute_rewards()
@@ -366,12 +365,30 @@ class SumoEnvironment(gym.Env):
     def _run_steps(self):
         ### 次の現示を決めるstepまでsumoを進める
         time_to_act = False
+        step = 0
         while not time_to_act:
             self._sumo_step()
             for ts in self.ts_ids:
                 self.traffic_signals[ts].update()
                 if self.traffic_signals[ts].time_to_act:
                     time_to_act = True
+            step += 1
+        self.time_to_next_step = step
+
+    def _inequal_run_steps(self):
+        step = 0
+        time_to_next_yellow = min([self.sumo.trafficlight.getNextSwitch(ts) - self.sim_step for ts in self.ts_ids])
+        if time_to_next_yellow == 0:
+            self.time_to_next_step = self.yellow_time + self.all_red_time + self.min_green
+        elif time_to_next_yellow < self.delta_time:
+            self.time_to_next_step = time_to_next_yellow
+        else:
+            self.time_to_next_step = self.delta_time
+        while step < self.time_to_next_step:
+            self._sumo_step()
+            step += 1
+            for ts in self.ts_ids:
+                self.traffic_signals[ts].update()
 
     def _apply_actions(self, actions):
         """Set the next green phase for the traffic signals.
