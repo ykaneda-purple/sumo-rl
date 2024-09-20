@@ -346,7 +346,7 @@ class SumoEnvironment(gym.Env):
             self._apply_actions(action)
             self._run_steps()
         elif self.equal_interval:
-            self._run_steps()
+            self._fixed_run_steps()
         else:
             self._inequal_run_steps()
 
@@ -374,6 +374,15 @@ class SumoEnvironment(gym.Env):
                     time_to_act = True
             step += 1
         self.time_to_next_step = step
+
+    def _fixed_run_steps(self):
+        ### 次の現示を決めるstepまでsumoを進める
+        step = 0
+        while step < self.delta_time:
+            self._sumo_step()
+            step += 1
+            for ts in self.ts_ids:
+                self.traffic_signals[ts].update()
 
     def _inequal_run_steps(self):
         step = 0
