@@ -276,6 +276,7 @@ class SumoEnvironment(gym.Env):
                 self.close()
                 self.save_csv(self.out_csv_name, self.episode)
             self.episode += 1
+            self.metrics = []
             self.my_metrics = []
             self.lane_vehicles = {ts: {lane: {} for lane in self.traffic_signals[ts].lanes} for ts in self.ts_ids}
             self.sim_max_time = self.begin_time + self.num_seconds
@@ -615,10 +616,8 @@ class SumoEnvironment(gym.Env):
             episode (int): Episode number to be appended to the output file name.
         """
         if out_csv_name is not None:
-            df_preinfo = pd.DataFrame(self.metrics)
             df_myinfo = pd.DataFrame(self.my_metrics)
             Path(Path(out_csv_name).parent).mkdir(parents=True, exist_ok=True)
-            df_preinfo.to_csv(out_csv_name + f"_conn{self.label}_ep{episode}" + ".csv", index=False)
             df_myinfo.to_csv(out_csv_name + f"_allstep_conn{self.label}_ep{episode}" + ".csv", index=False)
 
     # Below functions are for discrete state space
