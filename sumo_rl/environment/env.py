@@ -204,7 +204,7 @@ class SumoEnvironment(gym.Env):
 
         self.vehicles = dict()
         self.lane_vehicles = {ts: {lane: {} for lane in self.traffic_signals[ts].lanes} for ts in self.ts_ids}
-        self.pending_vehicles = {ts: {lane: {} for lane in self.traffic_signals[ts].lanes} for ts in self.ts_ids}
+        self.pending_vehicles = {ts: {lane: 0 for lane in self.traffic_signals[ts].lanes} for ts in self.ts_ids}
         self.reward_range = (-float("inf"), float("inf"))
         self.episode = 0
         self.metrics = []
@@ -469,7 +469,7 @@ class SumoEnvironment(gym.Env):
                         diff_waiting_time += acc_waiting_time
                         self.lane_vehicles[ts][lane][now_vehicles[i]] = acc_waiting_time
                     # ここで挿入されたなかった台数分だけdepart_delayが増える
-                    diff_waiting_time += len(self.pending_vehicles[ts][lane])
+                    diff_waiting_time += self.pending_vehicles[ts][lane]
                 info.update({f"lane_{lane}_throughput": throughput})
                 info.update({f"lane_{lane}_vehicles_number": self.traffic_signals[ts].departed_vehicle_number(lane)})
                 info.update({f"lane_{lane}_queue_length": self.traffic_signals[ts].count_queue_length(lane)})
@@ -540,7 +540,7 @@ class SumoEnvironment(gym.Env):
         all_pending = self.sumo.simulation.getPendingVehicles()
         for ts in self.ts_ids:
             for lane in self.traffic_signals[ts].lanes:
-                self.pending_vehicles[ts][lane] = list(filter(lambda x: self.get_pending_fn(x, lane), all_pending))
+                self.pending_vehicles[ts][lane] = self.get_pending_fn(all_pending, lane)
 
     def _sumo_step(self):
         self.sumo.simulationStep()

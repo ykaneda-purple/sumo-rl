@@ -311,8 +311,8 @@ class TrafficSignal:
 
     def departed_vehicle_number(self, lane):
         vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
-        pending_vehicles = self.env.pending_vehicles[self.id][lane]
-        return len(vehicles) + len(pending_vehicles)
+        pending_vehicles_number = self.env.pending_vehicles[self.id][lane]
+        return len(vehicles) + pending_vehicles_number
     
     def get_lanes_density_with_pending_vehicles(self) -> List[float]:
         lanes_density = [
@@ -324,11 +324,11 @@ class TrafficSignal:
     
     def get_halting_number(self, lane):
         vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)
-        pending_vehicles = self.env.pending_vehicles[self.id][lane]
+        pending_vehicles_number = self.env.pending_vehicles[self.id][lane]
         if len(vehicles) == 0:
             return 0
         elif self.sumo.vehicle.getSpeed(vehicles[0]) < 0.1: # 最後尾の車が静止状態の場合
-            return self.sumo.lane.getLastStepHaltingNumber(lane) + len(pending_vehicles)
+            return self.sumo.lane.getLastStepHaltingNumber(lane) + pending_vehicles_number
         else:
             return self.sumo.lane.getLastStepHaltingNumber(lane)
 
@@ -351,7 +351,7 @@ class TrafficSignal:
     
     def count_queue_length(self, lane):
         vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
-        pending_vehicles = self.env.pending_vehicles[self.id][lane]
+        pending_vehicles_number = self.env.pending_vehicles[self.id][lane]
         if len(vehicles) == 0:
             return 0
         elif self.sumo.vehicle.getSpeed(vehicles[0]) >= 0.1: # 先頭の車が静止状態でないとき
@@ -364,7 +364,7 @@ class TrafficSignal:
                 else:
                     break
             if queue == len(vehicles):
-                queue += len(pending_vehicles)
+                queue += pending_vehicles_number
             return queue
         
     def get_lanes_queue_with_pending_vehicles(self) -> List[float]:
