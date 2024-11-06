@@ -104,7 +104,7 @@ class SumoEnvironment(gym.Env):
         add_system_info: bool = True,
         add_per_agent_info: bool = True,
         sumo_seed: Union[str, int] = "random",
-        fixed_ts: bool = False,
+        fixed_ts: Union[bool, pd.DataFrame] = False,
         sumo_warnings: bool = True,
         additional_sumo_cmd: Optional[str] = None,
         render_mode: Optional[str] = None,
@@ -128,7 +128,7 @@ class SumoEnvironment(gym.Env):
             self._sumo_binary = sumolib.checkBinary("sumo")
 
         self.begin_time = begin_time
-        self.num_seconds = num_seconds
+        self.num_seconds = num_seconds # 1エピソードが何秒か
         self.sim_max_time = begin_time + num_seconds
         self.delta_time = delta_time  # seconds on sumo at each step
         self.max_depart_delay = max_depart_delay  # Max wait time to insert a vehicle
@@ -138,7 +138,7 @@ class SumoEnvironment(gym.Env):
         self.max_green = max_green
         self.yellow_time = yellow_time
         self.all_red_time = all_red_time
-        self.num_episodes = num_episodes
+        self.num_episodes = num_episodes # 何エピソードごとにSUMOをリセットするか
         self.single_agent = single_agent
         self.reward_fn = reward_fn
         self.equal_interval = equal_interval
@@ -324,7 +324,6 @@ class SumoEnvironment(gym.Env):
         else:
             self.episode += 1
             self.sim_max_time += self.num_seconds
-            self.save_csv(self.out_csv_name, self.episode)
 
         if self.single_agent:
             return self._compute_observations()[self.ts_ids[0]], self._compute_info()
@@ -343,7 +342,7 @@ class SumoEnvironment(gym.Env):
             action (Union[dict, int]): action(s) to be applied to the environment.
             If single_agent is True, action is an int, otherwise it expects a dict with keys corresponding to traffic signal ids.
         """
-        if not self.fixed_ts and action is not None and action != {}:
+        if self.fixed_ts is False and action is not None and action != {}:
             self._apply_actions(action)
             self._run_steps()
         elif self.equal_interval:
@@ -386,11 +385,13 @@ class SumoEnvironment(gym.Env):
                 self.traffic_signals[ts].update()
 
     def _inequal_run_steps(self):
+        ### 普段はdelta_timeごとに観測をするが、信号切り替え時はmin_greenが経った後にする
         step = 0
         time_to_next_yellow = min([self.sumo.trafficlight.getNextSwitch(ts) - self.sim_step for ts in self.ts_ids])
         if time_to_next_yellow == 0:
             self.time_to_next_step = self.yellow_time + self.all_red_time + self.min_green
         elif time_to_next_yellow < self.delta_time:
+            # 次の信号切り替えまでがdelta_timeよりも短いときは信号切り替え時に観測をする
             self.time_to_next_step = time_to_next_yellow
         else:
             self.time_to_next_step = self.delta_time
@@ -493,13 +494,13 @@ class SumoEnvironment(gym.Env):
             {
                 ts: self.traffic_signals[ts].compute_observation()
                 for ts in self.ts_ids
-                if self.traffic_signals[ts].time_to_act or self.fixed_ts
+                if self.traffic_signals[ts].time_to_act or self.fixed_ts is not False
             }
         )
         return {
             ts: self.observations[ts].copy()
             for ts in self.observations.keys()
-            if self.traffic_signals[ts].time_to_act or self.fixed_ts
+            if self.traffic_signals[ts].time_to_act or self.fixed_ts is not False
         }
 
     def _compute_rewards(self):
@@ -507,10 +508,10 @@ class SumoEnvironment(gym.Env):
             {
                 ts: self.traffic_signals[ts].compute_reward()
                 for ts in self.ts_ids
-                if self.traffic_signals[ts].time_to_act or self.fixed_ts
+                if self.traffic_signals[ts].time_to_act or self.fixed_ts is not False
             }
         )
-        return {ts: self.rewards[ts] for ts in self.rewards.keys() if self.traffic_signals[ts].time_to_act or self.fixed_ts}
+        return {ts: self.rewards[ts] for ts in self.rewards.keys() if self.traffic_signals[ts].time_to_act or self.fixed_ts is not False}
 
     @property
     def observation_space(self):

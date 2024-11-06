@@ -10,6 +10,7 @@ if "SUMO_HOME" in os.environ:
 else:
     raise ImportError("Please declare the environment variable 'SUMO_HOME'")
 import numpy as np
+import pandas as pd
 from gymnasium import spaces
 
 
@@ -109,16 +110,31 @@ class TrafficSignal:
         self.observation_space = self.observation_fn.observation_space()
         self.action_space = spaces.Discrete(self.num_green_phases)
 
-    def _build_phases(self):
-        phases = self.sumo.trafficlight.getAllProgramLogics(self.id)[0].phases
+    def _build_phases(self): 
+        now_logic= self.sumo.trafficlight.getAllProgramLogics(self.id)[0]
+        phases = now_logic.phases
         self.green_phases = []
 
-        if self.env.fixed_ts:
+        if self.env.fixed_ts is not False:
             for phase in phases:
                 state = phase.state
                 if "y" not in state and (state.count("r") + state.count("s") != len(state)):
                     self.green_phases.append(state)
             self.num_green_phases = len(self.green_phases)
+            if isinstance(self.env.fixed_ts, pd.DataFrame):
+                # 初回のプログラムを定義する
+                next_program = self.env.fixed_ts[(self.env.fixed_ts["ts_id"] == self.id) & (self.env.fixed_ts["start"] == 0)].iloc[0]
+                new_phases = []
+                for phase in phases:
+                    state = phase.state
+                    if state in self.env.fixed_ts.columns:
+                        duration = next_program[state]
+                        new_phase = self.sumo.trafficlight.Phase(duration, state)
+                        new_phases.append(new_phase)
+                    else:
+                        new_phases.append(phase)
+                new_logic = self.sumo.trafficlight.Logic(programID=next_program["program_id"], type=now_logic.type, currentPhaseIndex=0, phases=new_phases, subParameter={})
+                self.sumo.trafficlight.setProgramLogic(self.id, new_logic)
             return
 
         self.yellow_dict = {}
@@ -163,7 +179,7 @@ class TrafficSignal:
         If the traffic signal should act, it will set the next green phase and update the next action time.
         """
         self.time_since_last_phase_change += 1
-        if not self.env.fixed_ts:
+        if self.env.fixed_ts is False:
             if self.is_yellow and self.time_since_last_phase_change == self.yellow_time:
                 # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
                 if self.all_red_time != 0:
@@ -187,6 +203,28 @@ class TrafficSignal:
                 self.green_phase = (self.green_phase + 1) % self.num_green_phases # green_phaseは次のものに移行
                 self.time_since_last_phase_change = 1
                 self.is_yellow = True
+                if isinstance(self.env.fixed_ts, pd.DataFrame) and self.green_phase == 0:
+                    # 信号プログラムを変える
+                    schedule_df = self.env.fixed_ts[self.env.fixed_ts["ts_id"] == self.id]
+                    now_schedule = schedule_df[schedule_df["program_id"] == self.sumo.trafficlight.getProgram(self.id)]
+                    if now_schedule["start"].iloc[0] <= self.env.sim_step < now_schedule["end"].iloc[0]:
+                        # 今のプログラムの時間内のときは何もしない
+                        pass
+                    else:
+                        # 次のプログラムに変更
+                        next_program = schedule_df[(schedule_df["start"] <= self.env.sim_step) & (schedule_df["end"] > self.env.sim_step)].iloc[0]
+                        now_logic = self.sumo.trafficlight.getAllProgramLogics(self.id)[0]
+                        new_phases = []
+                        for phase in now_logic.phases:
+                            state = phase.state
+                            if state in self.env.fixed_ts.columns:
+                                duration = next_program[state]
+                                new_phase = self.sumo.trafficlight.Phase(duration, state)
+                                new_phases.append(new_phase)
+                            else:
+                                new_phases.append(phase)
+                        new_logic = self.sumo.trafficlight.Logic(programID=next_program["program_id"], type=now_logic.type, currentPhaseIndex=0, phases=new_phases, subParameter={})
+                        self.sumo.trafficlight.setProgramLogic(self.id, new_logic)
             else:
                 # 黄信号のまま続くときは何も変わらない
                 pass
