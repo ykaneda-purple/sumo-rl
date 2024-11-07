@@ -321,6 +321,9 @@ class SumoEnvironment(gym.Env):
                 }
 
             self.vehicles = dict()
+            if isinstance(self.fixed_ts, pd.DataFrame):
+                for ts in self.ts_ids:
+                    self.traffic_signals[ts].update_traffic_program()
         else:
             self.episode += 1
             self.sim_max_time += self.num_seconds
