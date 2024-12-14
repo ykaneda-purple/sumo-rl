@@ -226,7 +226,7 @@ class TrafficSignal:
             new_phase (int): Number between [0 ... num_green_phases]
         """
         new_phase = int(new_phase)
-        if self.green_phase == new_phase or self.time_since_last_phase_change < self.yellow_time + self.all_red_time + self.min_green:
+        if self.green_phase == new_phase or self.env.sim_step == 0 or (self.time_since_last_phase_change < self.yellow_time + self.all_red_time + self.min_green  and self.env.sim_step >= self.yellow_time + self.all_red_time + self.min_green):
             # self.sumo.trafficlight.setPhase(self.id, self.green_phase)
             self.next_action_time = self.env.sim_step + self.delta_time
         else:
