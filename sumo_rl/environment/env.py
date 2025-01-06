@@ -442,36 +442,25 @@ class SumoEnvironment(gym.Env):
                 throughput = 0
                 previous_vehicles = list(self.lane_vehicles[ts][lane].keys())
                 now_vehicles = self.sumo.lane.getLastStepVehicleIDs(lane)[::-1]
+                is_front = True # 先頭でいなくなった車はthroughputとして処理する
                 for veh in previous_vehicles:
                     acc_waiting_time = self.sumo.vehicle.getAccumulatedWaitingTime(veh)
                     diff = acc_waiting_time - self.lane_vehicles[ts][lane][veh]
                     diff_waiting_time += diff
                     if veh not in now_vehicles:
-                        throughput += 1
+                        # 先頭でいなくなった車はthroughputとして処理するが、それ以外は車線変更
+                        throughput += 1 if is_front else 0
                         self.lane_vehicles[ts][lane].pop(veh)
                     else:
+                        is_front = False
                         self.lane_vehicles[ts][lane][veh] = acc_waiting_time
-                # now_vehiclesの後半をself.lane_vehicles[ts][lane]に追加する
-                if len(now_vehicles) == 0:
-                    # 今のステップのレーンに車がいない→追加せずにスキップ
-                    new_index = -1
-                elif len(previous_vehicles) == 0:
-                    # 前回のステップで車がいなかった
-                    new_index = 0
-                elif previous_vehicles[-1] not in now_vehicles:
-                    # 前回のステップの車がすべてはけた
-                    new_index = 0
-                elif now_vehicles[-1] != previous_vehicles[-1]:
-                    # 後ろに車が来ていない→追加せずにスキップ
-                    new_index = -1
-                else:
-                    new_index = now_vehicles.index(previous_vehicles[-1]) + 1
-                if new_index != -1:
-                    for i in range(new_index, len(now_vehicles)):
-                        # 新しく見えた車列の累積待ち時間とdepart delayを足す
-                        acc_waiting_time = self.sumo.vehicle.getAccumulatedWaitingTime(now_vehicles[i])
-                        diff_waiting_time += acc_waiting_time
-                        self.lane_vehicles[ts][lane][now_vehicles[i]] = acc_waiting_time
+                for veh in now_vehicles:
+                    if veh not in previous_vehicles:
+                        acc_waiting_time = self.sumo.vehicle.getAccumulatedWaitingTime(veh)
+                        if acc_waiting_time > 0:
+                            # 車線変更をしてきてる
+                            diff_waiting_time += 1
+                        self.lane_vehicles[ts][lane][veh] = acc_waiting_time
                     # ここで挿入されたなかった台数分だけdepart_delayが増える
                     diff_waiting_time += self.pending_vehicles[ts][lane]
                 info.update({f"lane_{lane}_throughput": throughput})
